@@ -1,224 +1,172 @@
-# VRAM Manager for X-Plane 12（显存管理器）
+# VRAM Manager（显存管理器）for X-Plane 12
 
-X-Plane 12 原生插件（C++ / XPLM 4.3），用**降低渲染距离**的方式管理显存，界面是自绘的现代化面板。
+一个专门管**显存**的 X-Plane 12 插件：把显存占用压到你设定的目标值并稳住，
+**不牺牲画质**——贴图分辨率全程不动，所以座舱和地景不会变糊。
 
-> **设计原则**：只改渲染距离，**绝不写纹理等级** —— 贴图不会因为本插件变糊。
-> 纹理等级只做只读显示，用来区分“是 X-Plane 自己降的”还是别的插件降的。
-
----
-
-## 1. 安装与目录
-
-```
-X-Plane 12/Resources/plugins/VRAMManager/
-├── 64/win.xpl        插件本体（Windows 64 位，无额外运行时 DLL 依赖）
-├── src/              源码
-├── SDK/              X-Plane SDK 4.3 头文件与导入库（离线重新编译用）
-├── build.ps1         一键编译脚本
-└── README.md         本文件
-```
-
-启动后 **Plugins → VRAM Manager** 出现菜单；`Log.txt` 里搜 `[VRAMManager]` 可看到：
-
-```
-[VRAMManager] VRAM: ===== VRAM Manager v1.9.18 loaded (X-Plane 12) =====
-[VRAMManager] VRAM: modern panel created at 467,681 size 520x352 (scale 1.00)
-[VRAMManager] VRAM: panel fonts ready (scale 1.00, body tex=156 glerr=0)
-[VRAMManager] VRAM: render-distance dataref resolved late: '.../reno/LOD_bias_rat' (type=2) base=2.2500
-[VRAMManager] VRAM: first sample src=1 used=3.02 GB ... vram=7.71 GB
-```
+> 和其它优化插件的区别：它们调的是帧率，调的往往是物体密度、反射、阴影这些你能看出来的东西；
+> 这个插件只动**纹理驻留距离**和**渲染距离**，并且会盯着 X-Plane 别偷偷降你的贴图。
 
 ---
 
-## 2. 菜单（Plugins 下拉栏，全英文）
+## 装在哪
 
-| 菜单项 | 作用 |
+把 `VRAM-Manager` 文件夹整个放进：
+
+```
+X-Plane 12\Resources\plugins\
+```
+
+最终路径应该是：
+
+```
+X-Plane 12\Resources\plugins\VRAM-Manager\64\win.xpl
+```
+
+进游戏后，菜单栏 **Plugins → VRAM Manager** 里就能找到它。
+
+---
+
+## 面板
+
+```
+┌──────────────────────────────────────────────────┐
+│ ● VRAM Manager                          v1.9.18 ✕│
+│  4.85 GB                                    63%  │
+│  ████████████████████████░░░░░░░░░░░░░░░░░░      │
+│  of 7.71 GB dedicated VRAM                       │
+│  Render distance 100%   Texture level 4   FPS 58 │
+│                                                  │
+│  [✓] Auto manage render distance   [ ] Auto rescue│
+│  [ Cloud trim: Auto            ON ]              │
+│                                                  │
+│  Target VRAM (purge above this)              62% │
+│  Minimum render distance                     75% │
+│  Texture budget                       default    │
+│  Texture paging distance               6.0 km    │
+│                                                  │
+│  [ Purge now ] [ Restore ] [ Save ] [ Hide ]     │
+│  Holding at 100%                                 │
+└──────────────────────────────────────────────────┘
+```
+
+| 位置 | 含义 |
 |---|---|
-| Show / hide panel | 显示 / 隐藏面板（勾选=可见） |
-| Auto manage render distance | 自动管理开关 |
-| Purge VRAM now | 立即清理一次（只压渲染距离，约 5 秒后恢复） |
-| Restore X-Plane settings | 恢复原始渲染距离并关闭自动管理 |
-| Reload scenery (hard purge) | 重载地景（最彻底，也最卡） |
-| UI size | 面板缩放：自动 → 80% → 90% → 100% → 115% → 130% → 150% |
-| About / diagnostics | 把显卡、显存来源、dataref 信息写进 Log.txt |
-
-命令（可在 设置 → 键盘 绑定）：`vrammanager/panel`、`vrammanager/auto`、`vrammanager/purge`。
+| 大数字 / 百分比 | 当前 X-Plane 进程占用的显存，颜色随占用从绿变黄再变红 |
+| Render distance | 渲染距离，**100% = X-Plane 原本的值**，被压时会显示 85%、70% 之类 |
+| Texture level | X-Plane 的纹理等级，**只显示不修改**，用来判断是不是它自己降的 |
+| FPS / `[VRAM limited]` | 帧率；方括号提示当前是什么在限制（显存 / 帧率 / 贴图等级） |
+| 标题栏 | 按住可拖动窗口，位置会被记住 |
 
 ---
 
-## 3. 面板
+## 三个核心功能
 
-自绘面板（OpenGL 立即模式 + GDI 字形图集）：
+### 1. 自动管理（默认开启）
+
+显存超过 **Target VRAM** 就开始降，降到目标以下自动恢复。它会按"最不容易看出来"的顺序动手：
+
+1. 先缩短**纹理驻留距离**（远处地景贴图不再常驻，近处和座舱完全不受影响）；
+2. 还不够才缩短**渲染距离**（默认最低只到 75%）；
+3. 云层 / 阴影 / 光照探针的修剪（Cloud trim 选 Auto 时）最后才动。
+
+恢复时顺序相反。
+
+### 2. 一键清理（Purge now）
+
+把纹理驻留距离临时收到 600 米约 2 秒，强制 X-Plane 卸载远处的贴图，然后恢复。
+适合落地后、进近前这类"想立刻腾出显存"的时刻。
+
+### 3. Cloud trim（云层/渲染目标修剪）
+
+四档：**Off / Light / Max / Auto**
+
+- **Light**：降水粒子图和云阴影步进，看不出来；
+- **Max**：再加上云阴影图、阴影相机贴图、光照探针、IBL 探针、散射缓存减半——分辨率减半，肉眼很难分辨；
+- **Auto**：按显存压力自动升档降档（推荐）。
+
+**注意**：云体的形状（噪声体分辨率）永远不动，所以云不会"被削平"。
+
+---
+
+## 为什么贴图不会变糊
+
+X-Plane 在显存吃紧时会自己把贴图精度砍半，那才是变糊的原因。
+本插件**从不写纹理等级**，只做两件事：
+
+- 提前把显存压到安全区，让 X-Plane 没必要降贴图；
+- 万一它真的降了，面板会用琥珀色提示 `X-Plane lowered textures to N`，并稍微多留一点余量帮它升回来。
+
+如果你同时装了 LockYourTexture 之类的锁纹理插件，两边不冲突——本插件不会去写那个值。
+
+---
+
+## 常见问题
+
+**Q：显存没降下来？**
+先看面板百分比和 `Target VRAM` 的差距，再到 `Log.txt` 搜 `texture paging ->`。
+如果驻留距离已经压到 2.5 km 还降不下来，说明这套地景的贴图量确实大，可以把
+`Target VRAM` 再调低、或者把 `Texture budget` 拉到 `1.2~1.5` 让它用更多显存换清晰度。
+
+**Q：帧率掉了？**
+先确认面板是不是开着——关掉面板再测。另外配置里这几项如果被打开会明显影响帧率，确认它们是 0：
 
 ```
-┌──────────────────────────────────────────────┐
-│ ● VRAM Manager                          v1.9.18  ×│
-│  5.16 GB                              67%    │
-│  ████████████████░░░░░░░░░░░░░░░░░           │
-│  of 7.71 GB installed                         │
-│  ┌ LOD 2.250 ┐┌ TEX 4 ┐┌ FPS 58 ┐            │
-│  [●] Auto manage        [●] Auto rescue purge │
-│  Target VRAM     ──────●───────  82%          │
-│  Min distance    ──●───────────  55%          │
-│  [ Purge ] [ Reset ] [ Save ] [ Hide ]        │
-│  Holding at 100%                              │
-└──────────────────────────────────────────────┘
+priority=0   timeres=0   microsweep=0   texbudgetauto=0
 ```
 
-* 文字用 `Microsoft YaHei UI` 的 GDI 字形图集（12/14/17/27 px，抗锯齿），支持中文；
-* 进度条按占用变色：<80% 绿、80–92% 琥珀、≥92% 红；
-* 顶部标题栏可拖动窗口，右侧 `×` 关闭；
-* 底部一行显示状态（保持 / 降低 / 恢复 / 等待 dataref / 清理中）。
+**Q：想要更清晰 / 更省？**
+
+- 更清晰：`Texture budget` 往右拉（X-Plane 会更晚缩贴图，显存占用会升高）；
+- 更省：`Texture paging distance` 往左拉（4 km 以下远景贴图会明显变简单）。
+
+**Q：和别的优化插件冲突吗？**
+不抢控制权。别的插件改渲染距离时，本插件会重新接管，但不会关闭自适应逻辑；
+检测到潜在冲突只写日志，不影响功能。
 
 ---
 
-## 4. 自动管理逻辑
+## 配置文件
 
-每 0.5 秒采样显存、每 0.9 秒决策一次，指数平滑 + 滞回。**两级杠杆，优先级从"最看不出来"排到"最能省"**：
+`X-Plane 12\Output\preferences\VRAMManager.prf`（首次运行自动生成）
 
-1. **纹理驻留距离**（首选）——显存高于目标时按缺口比例收紧（默认 6 km，最低 2.5 km）。
-   远处贴图不再常驻，这是每单位视觉变化省显存最多的一项；
-2. **渲染距离**——驻留距离已到地板仍超标时才动，且默认最低只到 75%；
-3. **云层 / 渲染目标修剪**——Cloud trim 设为 Auto 时按压力自动升降档。
+| 键 | 说明 |
+|---|---|
+| `auto` | 自动管理开关（1/0） |
+| `target` / `restore` | 目标显存百分比 / 恢复阈值 |
+| `min` | 渲染距离最低比例（0.75 = 最多压到 75%） |
+| `paging` | 纹理驻留距离（米），0 = 用 X-Plane 原值 10000 |
+| `texbudget` | 纹理预算倍率（1.0 = 原值，越大越清晰也越吃显存） |
+| `cloudtrim` | 0=Off 1=Light 2=Max 3=Auto |
+| `show` | 启动时是否显示面板 |
 
-反向恢复顺序相反：先把渲染距离还原，再把驻留距离放回去。
-
-阈值：`Target VRAM`（默认 62%）以上收紧，`Restore`（默认 54%）以下恢复；地景加载中
-（`async_scenery_load_in_progress`）不动作；压到最低仍 >92% 且勾选 Auto rescue purge →
-每 2 分钟最多一次应急清理。
-
-停用插件/退出游戏时会把原始渲染距离、驻留距离、纹理预算、云层开关**全部写回**。
-
----
-
-## 5. 清理显存
-
-| 方式 | 触发 | 原理 | 代价 |
-|---|---|---|---|
-| 浅清理 | Purge 按钮 / 菜单 / 自动应急 | 把纹理驻留距离临时收到 600 m 约 2 秒，迫使分页器卸载远处贴图，再恢复 | 远处贴图重新流式加载，近处不变 |
-| 微扫 | 配置 `microsweep=1` | 每 55 秒把驻留距离收到 2500 m / 1.5 秒 | 只在巡航且帧率 >35 时触发 |
-| 重载地景 | Reload scenery | `sim/operation/reload_scenery` | 卡顿最久，适合落地后使用 |
-
-本插件对 `reno/tex_res` **只读不写**，所以不存在"清理后贴图变糊"。
+面板上改完会自动保存，手改配置需要重启游戏生效。
 
 ---
 
-## 6. 关于“贴图变糊”
+## 日志与反馈
 
-X-Plane 12 自带显存保护：显存吃紧会自己下调纹理等级，表现就是座舱/地景变糊。
-**这不是本插件干的。** 面板的 `TEX` 字段显示当前等级；如果被 X-Plane 降低了，
-底部会提示 `Note: X-Plane lowered its texture level ...`。
+所有信息都在 `X-Plane 12\Log.txt` 里，搜索 `[VRAMManager]`。
 
-本插件方向相反：提前压渲染距离 → 显存压力下降 → X-Plane 更不容易降纹理等级。
+遇到问题请附上这几行：
 
----
-
-## 7. 不与其它插件冲突
-
-1. 只写 `reno/LOD_bias_rat` 一个值；其余 `sim/private/*` 全部只读。
-2. 写后 0.5 秒回读校验：被改成第三个值 → 让出控制 8 秒并以当前值为新基准；
-   写入被 X-Plane 每帧覆盖 → 连续 2 次后降级为只读监控。
-3. 不挂钩、不改内存、不改 `X-Plane.prf`，配置单独存放。
-4. 启动扫描插件列表与 `FlyWithLua/Scripts`，命中 LockYourTexture / VisualXP 等关键字
-   只写 Log.txt，不打扰界面。
-
----
-
-## 8. 已知限制
-
-* 渲染距离依赖私有 dataref `sim/private/controls/reno/LOD_bias_rat`（XP 12.4.3 实测可写，
-  基准 2.25）。失效时自动降级为只读监控并把候选名单写进 Log.txt。
-* 只降渲染距离的代价是**远处景物变简单**，近处和座舱不受影响。
-
----
-
-## 9. 绘制与输入实现要点（踩过的坑）
-
-X-Plane 12 的 GL 桥 / 输入系统和插件常见写法有若干不一致，代码里都写了注释：
-
-**绘制**
-
-* 绘制必须放在 `XPLMRegisterDrawCallback(..., xplm_Phase_Window, ...)` 里；
-  窗口自己的 `drawWindowFunc` 在这台机器上拿不到可用的 GL 上下文；
-* **GL 桥不会给插件窗口设置 2-D 投影矩阵**，必须自己建：
-
-  ```cpp
-  glViewport(窗口矩形);
-  glMatrixMode(GL_PROJECTION); glPushMatrix(); glLoadIdentity();
-  glOrtho(left, right, bottom, top, -1, 1);
-  glMatrixMode(GL_MODELVIEW);  glPushMatrix(); glLoadIdentity();
-  ```
-
-  否则所有顶点都落在默认裁剪空间外，**一个像素都画不出来**；
-* 只可靠支持 `GL_QUADS`；`GL_TRIANGLE_FAN` / `GL_QUAD_STRIP` 会被静默丢弃
-  → 圆角、圆形全部用四边形拼；
-* 每批绘制前重设“1 个纹理单元 + `glDisable(GL_TEXTURE_2D)`”；
-* 纹理用 `glGenTextures` / `glBindTexture` / `glTexImage2D`（与 LockYourTexture 一致）；
-* `glTexSubImage2D` 上传字形子图时**必须设 `GL_UNPACK_ROW_LENGTH = 图集宽度`**，
-  否则 GL 按子图宽度读行，采样出来的 alpha 全是 0，文字完全透明；
-* 字形图集是自上而下上传的 DIB，所以 `V` 坐标是 `y/texH`（不是 `1-y/texH`）。
-
-**输入**
-
-* 窗口装饰必须用 `xplm_WindowDecorationSelfDecorated`；
-  `xplm_WindowDecorationNone` 的窗口**点击会穿过边界**（SDK 注释原话），收不到任何鼠标事件；
-* **鼠标坐标和窗口几何不在同一空间**：X-Plane 按 UI 缩放（本机 150%）上报鼠标位置
-  （2560×1440 屏幕上报的是 1707×960 空间），而窗口几何用真实像素。
-  直接用 `XPLMGetMouseLocationGlobal()` 会让点击整体偏移约 1/3 屏宽。
-  正确做法是用系统光标 + 屏幕高度翻转：
-
-  ```cpp
-  POINT pt; GetCursorPos(&pt);
-  int gx = pt.x, gy = screenH - pt.y;
-  ```
-
-* 拖动不依赖 `xplm_MouseDrag`，而是每帧轮询 `GetAsyncKeyState(VK_LBUTTON)` + 光标位置。
-
----
-
-## 10. 配置文件
-
-`X-Plane 12/Output/preferences/VRAMManager.prf`
-
-```ini
-auto=1         # 自动管理
-autopurge=1    # 自动应急清理
-show=1         # 启动时显示面板
-debug=0        # 1=输出 PROBE/心跳日志
-lang=0         # 0=英文，1=中文
-uiscale=0      # 0=按屏幕自动
-target=82.0    # 目标显存占用 %
-restore=68.0   # 低于该值恢复渲染距离
-min=0.550      # 渲染距离最低系数
-max=1.000      # 最高系数（=X-Plane 原值）
-step=0.040     # 调整步长
-winx=467  winy=681   # 面板位置
+```
+VRAM: ===== VRAM Manager v... loaded =====
+VRAM: texture paging distance = ... m (original)
+VRAM: texture paging -> ... m (usage ..., render distance ...)
+VRAM: first sample src=... used=... GB
 ```
 
 ---
 
-## 11. 重新编译
+## 从源码构建（可跳过）
+
+已经装好插件的用户不需要这一节。
 
 ```powershell
 winget install BrechtSanders.WinLibs.POSIX.UCRT
-cd "X-Plane 12\Resources\plugins\VRAMManager"
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-> 若 X-Plane 正在运行，`win.xpl` 被占用会导致链接失败（Permission denied）——先关游戏。
-
-| 文件 | 内容 |
-|---|---|
-| `src/vram.cpp` | PDH 三级显存来源 + DXGI 预算/显卡信息 |
-| `src/control.cpp` | dataref 解析/延迟重试/全量扫描、自动策略、清理状态机、冲突扫描 |
-| `src/panel.cpp` | 自绘面板：布局、绘制、鼠标交互、拖动 |
-| `src/gfx.cpp` | 2D 图元（纯四边形：圆角矩形、圆形、X 按钮、阴影） |
-| `src/font.cpp` | GDI 字形图集 + 文本绘制 |
-| `src/ui_menu.cpp` | Plugins 菜单、命令、中英文表、About |
-| `src/plugin.cpp` | 入口、配置读写、飞行循环、消息处理 |
-
 ---
 
-## 12. 卸载
-
-删除 `Resources/plugins/VRAMManager` 目录和 `Output/preferences/VRAMManager.prf` 即可。
+版本号规则：`x.x.xx`（最后两位为构建编号）。
