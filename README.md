@@ -169,4 +169,15 @@ powershell -ExecutionPolicy Bypass -File .\build.ps1
 
 ---
 
-版本号规则：`x.x.xx`（最后两位为构建编号）。
+版本号规则：`x.x.xx`（最后两位为构建编号）。更新内容见 [CHANGELOG.md](CHANGELOG.md)。
+
+---
+
+## 许可证
+
+本项目采用 MIT 许可证，详见 [LICENSE](LICENSE)。可自由使用、修改、再分发（含商用），
+保留版权声明即可。X-Plane SDK 的授权归 Laminar Research 所有，见 `SDK/license.txt`。
+
+---
+
+作者：TheCompiler · https://github.com/D3DCompiler
