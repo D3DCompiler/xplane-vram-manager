@@ -1,0 +1,13 @@
+# Build output
+/64/
+
+# Distribution artefacts (built locally, published as GitHub releases)
+/dist/
+
+# Editor / OS noise
+*.log
+*.tmp
+Thumbs.db
+desktop.ini
+.vs/
+.vscode/
