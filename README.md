@@ -1,5 +1,10 @@
 # VRAM Manager（显存管理器）for X-Plane 12
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/D3DCompiler/xplane-vram-manager)](https://github.com/D3DCompiler/xplane-vram-manager/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey)](https://github.com/D3DCompiler/xplane-vram-manager)
+
+
 一个专门管**显存**的 X-Plane 12 插件：把显存占用压到你设定的目标值并稳住，
 **不牺牲画质**——贴图分辨率全程不动，所以座舱和地景不会变糊。
 
