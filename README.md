@@ -33,26 +33,7 @@ X-Plane 12\Resources\plugins\VRAM-Manager\64\win.xpl
 
 ## 面板
 
-```
-┌──────────────────────────────────────────────────┐
-│ ● VRAM Manager                          v1.9.18 ✕│
-│  4.85 GB                                    63%  │
-│  ████████████████████████░░░░░░░░░░░░░░░░░░      │
-│  of 7.71 GB dedicated VRAM                       │
-│  Render distance 100%   Texture level 4   FPS 58 │
-│                                                  │
-│  [✓] Auto manage render distance   [ ] Auto rescue│
-│  [ Cloud trim: Auto            ON ]              │
-│                                                  │
-│  Target VRAM (purge above this)              62% │
-│  Minimum render distance                     75% │
-│  Texture budget                       default    │
-│  Texture paging distance               6.0 km    │
-│                                                  │
-│  [ Purge now ] [ Restore ] [ Save ] [ Hide ]     │
-│  Holding at 100%                                 │
-└──────────────────────────────────────────────────┘
-```
+打开后是一个独立窗口，标题栏可以拖动，位置会被记住。
 
 | 位置 | 含义 |
 |---|---|
